@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OPN Invoicer — On-chain Payments</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.7.0/dist/ethers.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green:       #1D9E75;
+      --green-dark:  #0F6E56;
+      --green-light: #E1F5EE;
+      --green-text:  #085041;
+      --amber-light: #FAEEDA;
+      --amber-text:  #633806;
+      --red-light:   #FCEBEB;
+      --red-text:    #501313;
+      --gray-light:  #F5F5F3;
+      --gray-border: #E8E8E4;
+      --text:        #1A1A18;
+      --text-muted:  #6B6B66;
+      --bg:          #F9F9F7;
+      --surface:     #FFFFFF;
+      --radius:      10px;
+      --radius-sm:   6px;
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--gray-border);
+      padding: 0 1.5rem;
+      height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 15px;
+    }
+    .logo-mark {
+      width: 28px; height: 28px;
+      background: var(--green);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-mark svg { width: 16px; height: 16px; }
+
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+
+    .chain-badge {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--green-light);
+      color: var(--green-text);
+      font-size: 12px; font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 20px;
+    }
+    .chain-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+    #connect-btn {
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s;
+    }
+    #connect-btn:hover { background: var(--green-dark); }
+
+    .wallet-info {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: var(--gray-light);
+      border: 1px solid var(--gray-border);
+      border-radius: var(--radius-sm);
+      padding: 5px 12px;
+      font-size: 13px;
+      font-family: 'DM Mono', monospace;
+    }
+
+    /* ── Layout ── */
+    .main { max-width: 960px; margin: 0 auto; padding: 1.5rem; }
+
+    .page-head {
+      display: flex; align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+    .page-title { font-size: 20px; font-weight: 600; }
+    .page-sub   { color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+
+    .btn-primary {
+      background: var(--green); color: #fff;
+      border: none; border-radius: var(--radius-sm);
+      padding: 8px 16px; font-size: 13px; font-weight: 500;
+      cursor: pointer; font-family: inherit;
+      display: flex; align-items: center; gap: 6px;
+      transition: background .15s;
+    }
+    .btn-primary:hover { background: var(--green-dark); }
+    .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+
+    /* ── Metric cards ── */
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 1.5rem;
+    }
+    .metric {
+      background: var(--surface);
+      border: 1px solid var(--gray-border);
+      border-radius: var(--radius);
+      padding: 1rem;
+    }
+    .metric-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+    .metric-value { font-size: 24px; font-weight: 600; }
+    .metric-sub   { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+    .metric-up    { color: var(--green); }
+
+    /* ── Panels ── */
+    .panels { display: grid; grid-template-columns: 1fr 260px; gap: 1rem; }
+    @media (max-width: 680px) { .panels { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--gray-border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+    }
+    .card + .card { margin-top: 1rem; }
+    .card-title { font-size: 14px; font-weight: 600; margin-bottom: 1rem; }
+
+    /* ── Filter tabs ── */
+    .filters { display: flex; gap: 6px; margin-bottom: 1rem; }
+    .filter {
+      font-size: 12px; padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--gray-border);
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: inherit;
+      transition: all .12s;
+    }
+    .filter.active { background: var(--green); color: #fff; border-color: var(--green); }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: left;
+      font-size: 11px; font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: .05em;
+      padding: 0 12px 8px 0;
+      border-bottom: 1px solid var(--gray-border);
+    }
+    td {
+      padding: 10px 12px 10px 0;
+      border-bottom: 1px solid var(--gray-border);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--gray-light); }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px; font-weight: 500;
+      padding: 3px 8px; border-radius: 20px;
+    }
+    .badge-paid     { background: var(--green-light); color: var(--green-text); }
+    .badge-pending  { background: var(--amber-light); color: var(--amber-text); }
+    .badge-overdue  { background: var(--red-light);   color: var(--red-text); }
+    .badge-draft    { background: var(--gray-light);  color: var(--text-muted); }
+    .badge-cancelled{ background: var(--gray-light);  color: var(--text-muted); }
+
+    .mono { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-muted); }
+
+    /* ── Chain info sidebar ── */
+    .chain-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--gray-border);
+      font-size: 13px;
+    }
+    .chain-row:last-child { border-bottom: none; }
+    .chain-key  { color: var(--text-muted); }
+    .chain-val  { font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500; }
+
+    /* ── Activity ── */
+    .activity-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--gray-border);
+    }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-icon {
+      width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; flex-shrink: 0;
+    }
+    .ai-green  { background: var(--green-light); color: var(--green-text); }
+    .ai-amber  { background: var(--amber-light); color: var(--amber-text); }
+    .activity-text { font-size: 12px; line-height: 1.4; }
+    .activity-time { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── Progress ── */
+    .progress { height: 4px; background: var(--gray-light); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width .4s; }
+
+    /* ── Empty state ── */
+    .empty {
+      text-align: center; padding: 2.5rem 1rem;
+      color: var(--text-muted); font-size: 13px;
+    }
+    .empty-icon { font-size: 32px; margin-bottom: 8px; }
+
+    /* ── Notification ── */
+    #toast {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      background: var(--text); color: #fff;
+      padding: 10px 16px; border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 500;
+      opacity: 0; transform: translateY(8px);
+      transition: all .2s; pointer-events: none; z-index: 999;
+      max-width: 300px;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.success { background: var(--green); }
+    #toast.error   { background: #A32D2D; }
+
+    /* ── Modal ── */
+    .modal-bg {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.45); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 1.5rem; width: 400px; max-width: 95vw;
+    }
+    .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 1.25rem; }
+    .form-group  { margin-bottom: 1rem; }
+    .form-label  { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; display: block; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 8px 10px;
+      border: 1px solid var(--gray-border);
+      border-radius: var(--radius-sm);
+      font-family: inherit; font-size: 13px;
+      background: var(--bg); color: var(--text);
+      outline: none; transition: border-color .15s;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: var(--green); }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 1.25rem; }
+    .btn-cancel {
+      background: transparent;
+      border: 1px solid var(--gray-border);
+      border-radius: var(--radius-sm);
+      padding: 8px 16px; font-size: 13px;
+      cursor: pointer; font-family: inherit; color: var(--text);
+    }
+
+    /* ── Connect overlay ── */
+    #connect-overlay {
+      position: fixed; inset: 0;
+      background: rgba(249,249,247,.92);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 50; gap: 12px; text-align: center;
+    }
+    #connect-overlay h2 { font-size: 20px; font-weight: 600; }
+    #connect-overlay p  { color: var(--text-muted); font-size: 14px; max-width: 340px; }
+    .connect-big {
+      background: var(--green); color: #fff;
+      border: none; border-radius: var(--radius);
+      padding: 12px 28px; font-size: 15px; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+      margin-top: 8px; transition: background .15s;
+    }
+    .connect-big:hover { background: var(--green-dark); }
+
+    #loading { display: none; font-size: 13px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+<!-- Connect wallet overlay -->
+<div id="connect-overlay">
+  <div class="logo-mark" style="width:48px;height:48px;border-radius:14px;margin-bottom:4px">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>
+    </svg>
+  </div>
+  <h2>OPN Invoicer</h2>
+  <p>Connect your MetaMask wallet to create and manage invoices on OPN Chain.</p>
+  <button class="connect-big" onclick="connectWallet()">Connect MetaMask</button>
+  <div id="loading">Connecting to OPN Chain…</div>
+</div>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>
+      </svg>
+    </div>
+    OPN Invoicer
+  </div>
+  <div class="topbar-right">
+    <div class="chain-badge">
+      <div class="chain-dot"></div>
+      OPN Chain · 984
+    </div>
+    <div class="wallet-info" id="wallet-display">
+      <div class="chain-dot"></div>
+      <span id="wallet-addr">—</span>
+    </div>
+    <button id="connect-btn" onclick="connectWallet()">Connect Wallet</button>
+  </div>
+</div>
+
+<!-- Main app -->
+<div class="main">
+  <div class="page-head">
+    <div>
+      <div class="page-title">Invoice Manager</div>
+      <div class="page-sub" id="subtitle">On-chain payments powered by OPN Chain</div>
+    </div>
+    <button class="btn-primary" onclick="openModal()" id="new-btn">
+      + New invoice
+    </button>
+  </div>
+
+  <!-- Metrics -->
+  <div class="metrics">
+    <div class="metric">
+      <div class="metric-label">Total invoiced</div>
+      <div class="metric-value" id="m-total">—</div>
+      <div class="metric-sub"><span id="m-count">—</span> invoices</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Paid on-chain</div>
+      <div class="metric-value metric-up" id="m-paid">—</div>
+      <div class="metric-sub" id="m-paid-count">—</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Pending</div>
+      <div class="metric-value" id="m-pending">—</div>
+      <div class="metric-sub" id="m-pending-count">—</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Your balance</div>
+      <div class="metric-value" id="m-balance">—</div>
+      <div class="metric-sub">OPN tokens</div>
+    </div>
+  </div>
+
+  <!-- Panels -->
+  <div class="panels">
+    <!-- Invoice table -->
+    <div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <div class="card-title" style="margin-bottom:0">Your invoices</div>
+          <button onclick="loadInvoices()" style="font-size:12px;color:var(--text-muted);background:none;border:none;cursor:pointer;font-family:inherit">↻ Refresh</button>
+        </div>
+        <div class="filters">
+          <button class="filter active" onclick="filterTable('all',this)">All</button>
+          <button class="filter" onclick="filterTable('Sent',this)">Sent</button>
+          <button class="filter" onclick="filterTable('Paid',this)">Paid</button>
+          <button class="filter" onclick="filterTable('Overdue',this)">Overdue</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Client</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Due</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="invoice-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Collection progress -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div class="card-title" style="margin-bottom:0">Collection rate</div>
+          <span style="font-size:13px;color:var(--green);font-weight:600" id="rate-pct">—</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px" id="rate-label">Connect wallet to see</div>
+        <div class="progress"><div class="progress-fill" id="rate-bar" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div>
+      <!-- Live chain stats -->
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-title">OPN Chain live</div>
+        <div class="chain-row"><span class="chain-key">Network</span><span class="chain-val">OPN Testnet</span></div>
+        <div class="chain-row"><span class="chain-key">Chain ID</span><span class="chain-val">984</span></div>
+        <div class="chain-row"><span class="chain-key">Block</span><span class="chain-val" id="s-block">—</span></div>
+        <div class="chain-row"><span class="chain-key">Gas price</span><span class="chain-val">7 Gwei</span></div>
+        <div class="chain-row"><span class="chain-key">Contract</span><span class="chain-val" id="s-contract">Not deployed</span></div>
+      </div>
+
+      <!-- Activity -->
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-title">Activity</div>
+        <div id="activity-feed">
+          <div class="empty"><div class="empty-icon">🔗</div>Connect wallet to see activity</div>
+        </div>
+      </div>
+
+      <!-- Pay an invoice you owe -->
+      <div class="card">
+        <div class="card-title">Pay an invoice</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Enter an invoice ID to pay what you owe a supplier</div>
+        <div class="form-group" style="margin-bottom:8px">
+          <input type="number" id="pay-id-input" placeholder="Invoice ID e.g. 3" min="1" />
+        </div>
+        <button class="btn-primary" style="width:100%;justify-content:center" onclick="payInvoice()">
+          Pay on OPN Chain
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New Invoice Modal -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <div class="modal-title">Create new invoice</div>
+    <div class="form-group">
+      <label class="form-label">Client wallet address</label>
+      <input type="text" id="f-payer" placeholder="0x..." />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Client name</label>
+      <input type="text" id="f-client" placeholder="e.g. Kano Digital Co." />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Amount (OPN)</label>
+      <input type="number" id="f-amount" placeholder="e.g. 10" step="0.01" min="0.001" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Due in (days)</label>
+      <input type="number" id="f-days" placeholder="e.g. 7" min="1" value="7" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description</label>
+      <input type="text" id="f-desc" placeholder="e.g. Web design — May 2026" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="createInvoice()" id="submit-btn">Send on OPN Chain</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── CONFIG ─────────────────────────────────────────────────────────────────
+// After deploying your contract, paste the address here:
+const CONTRACT_ADDRESS = "0x1D100F2053d7894d22dad6d595579d14B0CBcf51";
+
+const OPN_CHAIN = {
+  chainId:         "0x3D8",           // 984 in hex
+  chainName:       "OPN Chain Testnet",
+  nativeCurrency:  { name: "OPN", symbol: "OPN", decimals: 18 },
+  rpcUrls:         ["https://testnet-rpc.iopn.tech"],
+  blockExplorerUrls: ["https://testnet.iopn.tech"],
+};
+
+const ABI = [
+  "function createInvoice(address payer, uint256 amountWei, uint256 dueDays, string description, string clientName) returns (uint256)",
+  "function payInvoice(uint256 id) payable",
+  "function cancelInvoice(uint256 id)",
+  "function markOverdue(uint256 id)",
+  "function getCreatorInvoices(address creator) view returns (uint256[])",
+  "function getPayerInvoices(address payer) view returns (uint256[])",
+  "function getInvoice(uint256 id) view returns (tuple(uint256 id, address creator, address payer, uint256 amountWei, uint256 createdAt, uint256 dueDate, uint8 status, string description, string clientName))",
+  "function getPaymentAmount(uint256 id) view returns (uint256 total, uint256 fee, uint256 creatorReceives)",
+  "function totalInvoices() view returns (uint256)",
+  "function platformFeeBps() view returns (uint256)",
+  "event InvoiceCreated(uint256 indexed id, address indexed creator, address indexed payer, uint256 amount, uint256 dueDate)",
+  "event InvoicePaid(uint256 indexed id, address indexed payer, uint256 amountPaid, uint256 fee, uint256 timestamp)",
+];
+
+const STATUS = ["Draft", "Sent", "Paid", "Overdue", "Cancelled"];
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let provider, signer, contract, walletAddress;
+let allInvoices = [];
+let activity    = [];
+let currentFilter = "all";
+
+// ── WALLET CONNECTION ──────────────────────────────────────────────────────
+async function connectWallet() {
+  if (!window.ethereum) {
+    return toast("MetaMask not found. Please install it.", "error");
+  }
+  document.getElementById("loading").style.display = "block";
+  try {
+    // Request accounts
+    await window.ethereum.request({ method: "eth_requestAccounts" });
+
+    // Switch to OPN Chain (or add it if not present)
+    try {
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: OPN_CHAIN.chainId }],
+      });
+    } catch (switchErr) {
+      if (switchErr.code === 4902) {
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [OPN_CHAIN],
+        });
+      } else { throw switchErr; }
+    }
+
+    // Set up provider + signer
+    provider = new ethers.BrowserProvider(window.ethereum);
+    signer   = await provider.getSigner();
+    walletAddress = await signer.getAddress();
+
+    // Connect to contract (if deployed)
+    if (CONTRACT_ADDRESS !== "PASTE_YOUR_CONTRACT_ADDRESS_HERE") {
+      contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+      document.getElementById("s-contract").textContent =
+        CONTRACT_ADDRESS.slice(0,6) + "…" + CONTRACT_ADDRESS.slice(-4);
+    }
+
+    onConnected();
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Connection failed", "error");
+  }
+  document.getElementById("loading").style.display = "none";
+}
+
+function onConnected() {
+  // Hide overlay and connect button, show wallet info
+  document.getElementById("connect-overlay").style.display = "none";
+  document.getElementById("connect-btn").style.display = "none";
+  const wd = document.getElementById("wallet-display");
+  wd.style.display = "flex";
+  document.getElementById("wallet-addr").textContent =
+    walletAddress.slice(0,6) + "…" + walletAddress.slice(-4);
+
+  document.getElementById("subtitle").textContent =
+    "Showing invoices for " + walletAddress.slice(0,6) + "…" + walletAddress.slice(-4);
+
+  toast("Wallet connected to OPN Chain ✓", "success");
+
+  // Start polling block number
+  pollChain();
+  setInterval(pollChain, 4000);
+
+  loadInvoices();
+
+  // Listen for account changes
+  window.ethereum.on("accountsChanged", () => location.reload());
+  window.ethereum.on("chainChanged",    () => location.reload());
+}
+
+// ── CHAIN POLLING ──────────────────────────────────────────────────────────
+async function pollChain() {
+  try {
+    const block   = await provider.getBlockNumber();
+    const balance = await provider.getBalance(walletAddress);
+    document.getElementById("s-block").textContent   = "#" + block.toLocaleString();
+    document.getElementById("m-balance").textContent =
+      parseFloat(ethers.formatEther(balance)).toFixed(3);
+  } catch {}
+}
+
+// ── LOAD INVOICES FROM CHAIN ───────────────────────────────────────────────
+async function loadInvoices() {
+  if (!contract) {
+    // Demo mode — show sample data when contract not yet deployed
+    loadDemoData();
+    return;
+  }
+  try {
+    const ids = await contract.getCreatorInvoices(walletAddress);
+    allInvoices = [];
+    for (const id of ids) {
+      const inv = await contract.getInvoice(id);
+      allInvoices.push({
+        id:         Number(inv.id),
+        client:     inv.clientName,
+        payer:      inv.payer,
+        amount:     ethers.formatEther(inv.amountWei),
+        status:     STATUS[inv.status],
+        due:        new Date(Number(inv.dueDate) * 1000).toLocaleDateString("en-GB"),
+        amountWei:  inv.amountWei,
+      });
+    }
+    renderTable(currentFilter);
+    updateMetrics();
+  } catch (err) {
+    console.error(err);
+    toast("Failed to load invoices", "error");
+  }
+}
+
+function loadDemoData() {
+  allInvoices = [
+    { id:1, client:"Kano Digital Co.",  amount:"2.4",  status:"Paid",    due:"02/05/2026" },
+    { id:2, client:"Lagos FinTech Hub", amount:"0.8",  status:"Paid",    due:"08/05/2026" },
+    { id:3, client:"Abuja Web3 Labs",   amount:"0.66", status:"Overdue", due:"28/04/2026" },
+    { id:4, client:"Olu Tech Ltd",      amount:"1.0",  status:"Sent",    due:"20/05/2026" },
+    { id:5, client:"Kaduna SaaS Co.",   amount:"0.8",  status:"Sent",    due:"22/05/2026" },
+  ];
+  renderTable("all");
+  updateMetrics();
+  addActivity("Wallet connected", "✓", "ai-green");
+  addActivity("Loaded invoices from chain", "⛓", "ai-green");
+  addActivity("Contract not deployed yet", "⚠", "ai-amber");
+}
+
+// ── RENDER TABLE ───────────────────────────────────────────────────────────
+function renderTable(filter) {
+  const tbody = document.getElementById("invoice-tbody");
+  const data  = filter === "all"
+    ? allInvoices
+    : allInvoices.filter(i => i.status === filter);
+
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty"><div class="empty-icon">📄</div>No invoices found</div></td></tr>`;
+    return;
+  }
+
+  const statusClass = { Paid:"badge-paid", Sent:"badge-pending", Overdue:"badge-overdue", Draft:"badge-draft", Cancelled:"badge-cancelled" };
+
+  tbody.innerHTML = data.map(inv => `
+    <tr>
+      <td><span style="font-weight:600">INV-${String(inv.id).padStart(3,"0")}</span></td>
+      <td>${inv.client}</td>
+      <td style="font-weight:500">${parseFloat(inv.amount).toFixed(3)} OPN</td>
+      <td><span class="badge ${statusClass[inv.status]||"badge-draft"}">${inv.status}</span></td>
+      <td class="mono">${inv.due}</td>
+      <td>
+        ${inv.status === "Sent"
+          ? `<button onclick="cancelFromTable(${inv.id})" style="font-size:11px;color:var(--text-muted);background:none;border:1px solid var(--gray-border);border-radius:4px;padding:3px 8px;cursor:pointer;font-family:inherit">Cancel</button>`
+          : "—"
+        }
+      </td>
+    </tr>
+  `).join("");
+}
+
+function filterTable(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll(".filter").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderTable(filter);
+}
+
+// ── METRICS ────────────────────────────────────────────────────────────────
+function updateMetrics() {
+  const total   = allInvoices.reduce((s,i) => s + parseFloat(i.amount), 0);
+  const paid    = allInvoices.filter(i => i.status === "Paid");
+  const pending = allInvoices.filter(i => i.status === "Sent");
+  const paidAmt = paid.reduce((s,i) => s + parseFloat(i.amount), 0);
+  const pct     = total > 0 ? Math.round((paidAmt / total) * 100) : 0;
+
+  document.getElementById("m-total").textContent        = total.toFixed(2) + " OPN";
+  document.getElementById("m-count").textContent        = allInvoices.length;
+  document.getElementById("m-paid").textContent         = paidAmt.toFixed(2) + " OPN";
+  document.getElementById("m-paid-count").textContent   = paid.length + " payments";
+  document.getElementById("m-pending").textContent      = (total - paidAmt).toFixed(2) + " OPN";
+  document.getElementById("m-pending-count").textContent= pending.length + " awaiting";
+  document.getElementById("rate-pct").textContent       = pct + "%";
+  document.getElementById("rate-label").textContent     =
+    paidAmt.toFixed(2) + " OPN collected of " + total.toFixed(2) + " OPN invoiced";
+  document.getElementById("rate-bar").style.width       = pct + "%";
+}
+
+// ── CREATE INVOICE ─────────────────────────────────────────────────────────
+async function createInvoice() {
+  const payer  = document.getElementById("f-payer").value.trim();
+  const client = document.getElementById("f-client").value.trim();
+  const amt    = document.getElementById("f-amount").value.trim();
+  const days   = document.getElementById("f-days").value.trim();
+  const desc   = document.getElementById("f-desc").value.trim();
+
+  if (!payer || !client || !amt || !days || !desc) return toast("Fill in all fields", "error");
+
+  if (!contract) {
+    toast("Deploy the contract first, then paste address in index.html", "error");
+    return;
+  }
+
+  const btn = document.getElementById("submit-btn");
+  btn.disabled = true; btn.textContent = "Sending…";
+
+  try {
+    const amountWei = ethers.parseEther(amt);
+    const tx = await contract.createInvoice(payer, amountWei, parseInt(days), desc, client);
+    toast("Transaction sent. Waiting for confirmation…");
+    await tx.wait();
+    toast("Invoice created on OPN Chain ✓", "success");
+    addActivity(`Invoice created for ${client}`, "📄", "ai-green");
+    closeModal();
+    await loadInvoices();
+  } catch (err) {
+    console.error(err);
+    toast(err.reason || err.message || "Transaction failed", "error");
+  }
+
+  btn.disabled = false; btn.textContent = "Send on OPN Chain";
+}
+
+// ── PAY INVOICE ────────────────────────────────────────────────────────────
+async function payInvoice() {
+  const id = document.getElementById("pay-id-input").value.trim();
+  if (!id) return toast("Enter an invoice ID", "error");
+
+  if (!contract) return toast("Contract not deployed yet", "error");
+
+  try {
+    const { total } = await contract.getPaymentAmount(parseInt(id));
+    toast("Confirm payment in MetaMask…");
+    const tx = await contract.payInvoice(parseInt(id), { value: total });
+    await tx.wait();
+    toast("Payment confirmed on OPN Chain ✓", "success");
+    addActivity(`Invoice #${id} paid`, "✓", "ai-green");
+    await loadInvoices();
+  } catch (err) {
+    console.error(err);
+    toast(err.reason || err.message || "Payment failed", "error");
+  }
+}
+
+async function cancelFromTable(id) {
+  if (!contract) return toast("Contract not deployed yet", "error");
+  try {
+    const tx = await contract.cancelInvoice(id);
+    await tx.wait();
+    toast("Invoice cancelled ✓", "success");
+    addActivity(`Invoice #${id} cancelled`, "✕", "ai-amber");
+    await loadInvoices();
+  } catch (err) {
+    toast(err.reason || "Cancel failed", "error");
+  }
+}
+
+// ── ACTIVITY FEED ──────────────────────────────────────────────────────────
+function addActivity(text, icon, cls) {
+  activity.unshift({ text, icon, cls, time: "Just now" });
+  if (activity.length > 5) activity.pop();
+
+  document.getElementById("activity-feed").innerHTML =
+    activity.map(a => `
+      <div class="activity-item">
+        <div class="activity-icon ${a.cls}">${a.icon}</div>
+        <div>
+          <div class="activity-text">${a.text}</div>
+          <div class="activity-time">${a.time}</div>
+        </div>
+      </div>
+    `).join("");
+}
+
+// ── MODAL ──────────────────────────────────────────────────────────────────
+function openModal()  { document.getElementById("modal").classList.add("open"); }
+function closeModal() { document.getElementById("modal").classList.remove("open"); }
+
+// ── TOAST ──────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type = "") {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className   = "show " + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = "", 3500);
+}
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+// Auto-connect if already authorized
+window.addEventListener("load", async () => {
+  if (window.ethereum) {
+    const accounts = await window.ethereum.request({ method: "eth_accounts" });
+    if (accounts.length) connectWallet();
+  }
+});
+</script>
+</body>
+</html>

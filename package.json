@@ -1,0 +1,19 @@
+{
+  "name": "opn-invoicer",
+  "version": "1.0.0",
+  "description": "On-chain invoice & payment manager built on OPN Chain — Season 6 Builder submission",
+  "scripts": {
+    "compile":         "npx hardhat compile",
+    "test":            "npx hardhat test",
+    "deploy:testnet":  "npx hardhat run scripts/deploy.js --network opn_testnet",
+    "deploy:local":    "npx hardhat run scripts/deploy.js --network localhost",
+    "node":            "npx hardhat node"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
+    "hardhat": "^2.22.0",
+    "chai": "^4.3.0",
+    "dotenv": "^16.0.0"
+  }
+}
